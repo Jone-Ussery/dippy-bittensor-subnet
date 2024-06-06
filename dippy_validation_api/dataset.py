@@ -1,7 +1,7 @@
 import json
 import random
 import jinja2
-
+import bittensor as bt
 from transformers import AutoTokenizer
 from torch.utils.data import Dataset
 import tiktoken
@@ -130,6 +130,21 @@ The themes of the conversation are: {data_point['categories']}."""
         indices = list(range(len(self.dataset)))
         random.shuffle(indices)
         indices = indices[:n]
+        bt.logging.success(f"indices sum: {sum(indices)}, {max(indices)}, {min(indices)}")
                 
+        return [self[i] for i in indices], indices
+    
+    def sample_dataset_without(self, n: int, ids_to_exclude: list[int]):
+        # get indices of the dataset
+        indices = list(range(len(self.dataset)))
+        random.shuffle(indices)
+        indices = [idx for idx in indices if idx not in ids_to_exclude]
+        indices = indices[:n]
+        bt.logging.success(f"indices sum: {sum(indices)}, {max(indices)}, {min(indices)}")
+                
+        return [self[i] for i in indices]
+
+    def sample_validation_data(self, n: int):
+        indices = [idx*150 for idx in range(n)]
         return [self[i] for i in indices]
         

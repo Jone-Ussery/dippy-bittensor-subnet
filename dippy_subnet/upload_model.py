@@ -16,9 +16,11 @@ import argparse
 import torch
 import constants
 from model.storage.hugging_face.hugging_face_model_store import HuggingFaceModelStore
+from transformers import AutoTokenizer, AutoModelForCausalLM
 from model.model_updater import ModelUpdater
 import bittensor as bt
 from utilities import utils
+from utilities.utils import save_model
 from model.data import Model, ModelId
 from model.storage.chain.chain_model_metadata_store import ChainModelMetadataStore
 from huggingface_hub import update_repo_visibility
@@ -163,6 +165,7 @@ async def main(config: bt.config):
         )
 
     repo_namespace, repo_name = utils.validate_hf_repo_id(config.hf_repo_id)
+    print(f"{repo_namespace} / {repo_name}")
     model_id = ModelId(
         namespace=repo_namespace,
         name=repo_name,
@@ -171,6 +174,18 @@ async def main(config: bt.config):
     )
 
     if not config.skip_model_upload:
+
+        # model_to_save = AutoModelForCausalLM.from_pretrained(
+        #     pretrained_model_name_or_path=config.model_dir,
+        #     local_files_only=True,
+        #     attn_implementation="flash_attention_2",
+        #     torch_dtype=torch.bfloat16,
+        #     device_map='auto'
+        # )
+        # tokenizer = AutoTokenizer.from_pretrained("starnet/03s1")
+        # save_model(model_to_save, tokenizer, "local-models", "s11-m-0101")
+        # new_model_dir = "local-models/s11-m-0101"
+        # model = Model(id=model_id, local_repo_dir=new_model_dir)
         model = Model(id=model_id, local_repo_dir=config.model_dir)
 
         check_model_dir(config.model_dir)
@@ -196,7 +211,7 @@ async def main(config: bt.config):
         namespace=repo_namespace,
         name=repo_name,
         chat_template=config.chat_template, 
-        hash=regenerate_hash(repo_namespace, repo_name, config.chat_template, config.competition_id), 
+        hash=str(regenerate_hash(repo_namespace, repo_name, config.chat_template, config.competition_id)), 
         commit=model_id_with_commit.commit,
         competition_id=config.competition_id,
     )
@@ -212,11 +227,11 @@ async def main(config: bt.config):
     # We can only commit to the chain every n minutes, so run this in a loop, until successful.
     while True:
         try:
-            update_repo_visibility(
-                model_id.namespace + "/" + model_id.name,
-                private=False,
-                token=os.getenv("HF_ACCESS_TOKEN"),
-            )
+            # update_repo_visibility(
+            #     model_id.namespace + "/" + model_id.name,
+            #     private=False,
+            #     token=os.getenv("HF_ACCESS_TOKEN"),
+            # )
             await model_metadata_store.store_model_metadata(
                 wallet.hotkey.ss58_address, model_id_with_hash
             )
