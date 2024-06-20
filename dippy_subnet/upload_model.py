@@ -171,6 +171,8 @@ async def main(config: bt.config):
         name=repo_name,
         chat_template=config.chat_template,
         competition_id=config.competition_id,
+        commit=config.model_commit_id,
+        hash=str(regenerate_hash(repo_namespace, repo_name, config.chat_template, config.competition_id)),
     )
 
     if not config.skip_model_upload:
