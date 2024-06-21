@@ -337,7 +337,7 @@ max_len = min(model.config.max_position_embeddings, MAX_SEQ_LEN)
 bt.logging.on()
 
 def cal_vibe_score(model_path, arg_contexts, last_user_messages, expected_outputs):
-    model = LLM(
+    llm_model = LLM(
         model_path,
         tensor_parallel_size=torch.cuda.device_count(),
         gpu_memory_utilization=0.5,
@@ -354,7 +354,7 @@ def cal_vibe_score(model_path, arg_contexts, last_user_messages, expected_output
             max_tokens=min(int(max_user_message_len * (1 + MAX_GENERATION_LEEWAY)), MAX_GENERATION_LENGTH)
         )
 
-        outputs = model.generate(
+        outputs = llm_model.generate(
             prompts=arg_contexts[i:i+BATCH_SIZE_VIBE_SCORE],
             sampling_params=sampling_params,
         )
@@ -369,23 +369,23 @@ def cal_vibe_score(model_path, arg_contexts, last_user_messages, expected_output
         length_difference = abs(decoded_len - last_user_message_len)
         decoded_len_score = 0 if last_user_message_len == 0 else torch.exp(-torch.tensor(length_difference) * LENGTH_DIFF_PENALTY_STEEPNESS / last_user_message_len).item()
         vibe_scores.append(decoded_len_score)
-        if True:
-            print("##############################################")
-            if arg_contexts:
-                print(f"Context: {arg_contexts[i]}")
-            print(f"Last user message: {last_user_message}")
-            print(f"Generated text: {decoded}")
-            if expected_outputs:
-                print(f"Expected output: {expected_outputs[i]}")
+        # if True:
+        #     print("##############################################")
+        #     if arg_contexts:
+        #         print(f"Context: {arg_contexts[i]}")
+        #     print(f"Last user message: {last_user_message}")
+        #     print(f"Generated text: {decoded}")
+        #     if expected_outputs:
+        #         print(f"Expected output: {expected_outputs[i]}")
 
-            print(f"Vibe score: {decoded_len_score}")
-            print("##############################################")
+        #     print(f"Vibe score: {decoded_len_score}")
+        #     print("##############################################")
         i += 1
 
     destroy_model_parallel()
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    del model.llm_engine.model_executor
-    del model
+    del llm_model.llm_engine.model_executor
+    del llm_model
     gc.collect()
     torch.cuda.empty_cache()
     ray.shutdown()
@@ -395,6 +395,7 @@ def cal_vibe_score(model_path, arg_contexts, last_user_messages, expected_output
         print("No process group to destroy")
     
     return sum(vibe_scores) / len(vibe_scores)
+
 
 def calc_n_gram(outputs, targets_ids_mask, input_ids):
     # shift the logits to the right by one to get the corresponding predicted logits
@@ -647,6 +648,9 @@ for epoch in range(num_epochs):
         model_eval_path = "/workspace/dippy-bittensor-subnet/" + save_path + "/" + model_dir_name
         model_to_eval = None
         vibe_score = 0
+        vibe_score = cal_vibe_score(model_eval_path, contexts, last_user_messages, target_texts)
+        vibe_score_sum += vibe_score
+        vibe_count += 1
         if epoch < 1:
             model_to_eval = model
         else:
@@ -657,10 +661,8 @@ for epoch in range(num_epochs):
                 torch_dtype=torch.bfloat16,
                 device_map='auto'
             )
-            vibe_score = cal_vibe_score(model_eval_path, contexts, last_user_messages, target_texts)
-            vibe_score_sum += vibe_score
-            vibe_count += 1
 
+ 
         model_to_eval.eval()
         
         eval_prob = calc_prob(model_to_eval, contexts, target_texts, input_tokenizer, output_tokenizer, 16, eval_log=True)

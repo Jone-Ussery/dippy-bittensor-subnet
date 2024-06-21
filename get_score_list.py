@@ -75,7 +75,7 @@ model_wins = dict(sorted(model_wins.items(), key=lambda item: item[1], reverse=T
 table = PrettyTable()
 table.field_names = ["Namespace", "Name", "Wins", "Total Score", "Block", "Hotkey"]
 for key in model_wins.keys():
-    table.add_row([key[0], key[1], model_wins[key][0], model_wins[key][1], model_wins[key][2]])
+    table.add_row([key[0], key[1], model_wins[key][0], model_wins[key][1], model_wins[key][2], model_wins[key][3]])
 #print(model_wins)
 
 print(table)
