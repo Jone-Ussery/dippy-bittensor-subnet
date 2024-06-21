@@ -12,7 +12,6 @@ prettytable
 bitsandbytes
 accelerate
 flash-attn
-loguru
 threadpoolctl
 wandb
 loguru
