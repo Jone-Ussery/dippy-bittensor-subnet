@@ -8,5 +8,10 @@ protobuf
 python-dotenv
 supabase
 tiktoken
+prettytable
+bitsandbytes
+accelerate
+flash-attn
+loguru
 threadpoolctl
 wandb
