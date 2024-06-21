@@ -667,10 +667,13 @@ for epoch in range(num_epochs):
         total_eval_count += 1
         eval_prob_sum += eval_prob
         avg_eval_prob = eval_prob_sum / total_eval_count
-        
+
         bt.logging.success(f"Epoch {epoch + 1}/{num_epochs}, prob: {eval_prob} / {avg_eval_prob} / {best_eval_prob}")
         if vibe_count > 0:
             bt.logging.success(f"Epoch {epoch + 1}/{num_epochs}, vibe: {vibe_score} / {vibe_score_sum / vibe_count} / {best_vibe_score}")
+        else:
+            vibe_score = 0.2703
+        bt.logging.success(f"Epoch {epoch + 1}/{num_epochs}, total_score : {0.9551 * 0.06 + 0.9653 * 0.06 + vibe_score * 0.06 + eval_prob * 0.82}")
 
         if avg_eval_prob > best_eval_prob:
             best_eval_prob = avg_eval_prob
