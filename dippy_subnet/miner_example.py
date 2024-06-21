@@ -40,7 +40,7 @@ parser.add_argument(
 parser.add_argument(
     "--lr",
     type=float,
-    default=2e-7,
+    default=2e-8,
     help="Learning rate",
 )
 parser.add_argument(
@@ -342,7 +342,7 @@ def cal_vibe_score(model_path, arg_contexts, last_user_messages, expected_output
         tensor_parallel_size=torch.cuda.device_count(),
         gpu_memory_utilization=0.5,
         max_num_seqs=BATCH_SIZE_VIBE_SCORE,
-        max_seq_len_to_capture=MAX_SEQ_LEN_VIBE_SCORE,
+        max_model_len=MAX_SEQ_LEN_VIBE_SCORE,
     )
     decoded_messages = []
     # loop through the context in batches
@@ -855,7 +855,7 @@ for epoch in range(num_epochs):
             loss_values.append(loss_track)
             prob_values.append(n_gram_prob)
             
-            print(f"{time_str}     |     TRACK       |  - Step: {n_acc_steps} lr: {current_lr/pg_count} gradient: {total_norm} loss/ngram: {loss_track}/{loss_track_2} / {n_gram_prob}, vibe: {avg_vibe_prob_delta}", end='\r')
+            print(f"{time_str}     |  TRACK   |  - Step: {n_acc_steps} lr: {current_lr/pg_count} gradient: {total_norm} loss/ngram: {loss_track}/{loss_track_2} / {n_gram_prob}, vibe: {avg_vibe_prob_delta}", end='\r')
         # progress_bar.update(1)
         epoch_loss += loss_track_2
         n_batches += 1
