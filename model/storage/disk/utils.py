@@ -70,6 +70,7 @@ def remove_dir_out_of_grace_by_datetime(path: str, grace_period_seconds: int, la
 
     return False
 
+
 def remove_dir_out_of_grace(path: str, grace_period_seconds: int) -> bool:
     """Removes a dir if the last modified time is out of grace period secs. Returns if it was deleted."""
     last_modified = get_newest_datetime_under_path(path)

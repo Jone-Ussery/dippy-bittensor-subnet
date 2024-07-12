@@ -52,9 +52,7 @@ class ModelTracker:
         with self.lock:
             return copy.deepcopy(self.miner_hotkey_to_model_metadata_dict)
 
-    def get_model_metadata_for_miner_hotkey(
-        self, hotkey: str
-    ) -> Optional[ModelMetadata]:
+    def get_model_metadata_for_miner_hotkey(self, hotkey: str) -> Optional[ModelMetadata]:
         """Returns the model metadata for a given hotkey if any."""
 
         with self.lock:

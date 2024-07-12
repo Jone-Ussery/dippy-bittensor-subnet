@@ -23,8 +23,6 @@ class LocalModelStore(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def delete_unreferenced_models(
-        self, valid_models_by_hotkey: Dict[str, ModelId], grace_period_seconds: int
-    ):
+    def delete_unreferenced_models(self, valid_models_by_hotkey: Dict[str, ModelId], grace_period_seconds: int):
         """Check across all of local storage and delete unreferenced models out of grace period."""
         pass

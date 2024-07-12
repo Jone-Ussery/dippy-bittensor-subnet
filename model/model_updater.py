@@ -45,9 +45,7 @@ class ModelUpdater:
         metadata = await self._get_metadata(hotkey)
 
         if not metadata:
-            bt.logging.trace(
-                f"No valid metadata found on the chain for hotkey {hotkey}"
-            )
+            bt.logging.trace(f"No valid metadata found on the chain for hotkey {hotkey}")
             return False
 
         if self.min_block and metadata.block < self.min_block:
@@ -62,31 +60,15 @@ class ModelUpdater:
 
         parameters = ModelUpdater.get_competition_parameters(metadata.id.competition_id)
         if not parameters:
-            bt.logging.trace(
-                f"No competition parameters found for {metadata.id.competition_id}"
-            )
+            bt.logging.trace(f"No competition parameters found for {metadata.id.competition_id}")
             return False
 
         # Check what model id the model tracker currently has for this hotkey.
-        tracker_model_metadata = self.model_tracker.get_model_metadata_for_miner_hotkey(
-            hotkey
-        )
+        tracker_model_metadata = self.model_tracker.get_model_metadata_for_miner_hotkey(hotkey)
         if metadata == tracker_model_metadata:
             return False
         bt.logging.warning(f"Syncing model for hotkey {hotkey}")
         # Get the local path based on the local store to download to (top level hotkey path)
-        path = self.local_store.get_path(hotkey)
-        
-        # bt.logging.warning(f"Downloading model to {path}")
-        # # Otherwise we need to download the new model based on the metadata.
-        # model = await self.remote_store.download_model(metadata.id, path, parameters)
-        # bt.logging.warning(f"Downloaded model to {path}")
-        # # Check that the hash of the downloaded content matches.
-        # if model.id.hash != metadata.id.hash:
-        #     raise ValueError(
-        #         f"Sync for hotkey {hotkey} failed. Hash of content downloaded from hugging face does not match chain metadata. {metadata}"
-        #     )
-
         # Update the tracker
         self.model_tracker.on_miner_model_updated(hotkey, metadata)
         bt.logging.warning(f"Model for hotkey {hotkey} updated to {metadata}")

@@ -1,8 +1,10 @@
 */bittensor_models
-*/log
+*/logs
 model-store/
 dependencies_installed
 data/
+datasets/
+dippy_validation_api/logs/*
 *_env
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -173,3 +175,4 @@ wandb/
 
 testing/
 .idea
+playground/

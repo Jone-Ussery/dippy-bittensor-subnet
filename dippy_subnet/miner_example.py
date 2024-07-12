@@ -262,10 +262,9 @@ login(
 )
 
 
-# model_name = 'aks1s/aks-11-09'
-save_path = 'local-models'
-run_id = dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-model_dir_name = run_id
+model_name = "lmsys/vicuna-13b-v1.5"
+save_path = "bittensor_models"
+model_dir_name = model_name.split("/")[1]
 
 print(f"Loading model {model_name}\n")
 # Load the tokenizer and model

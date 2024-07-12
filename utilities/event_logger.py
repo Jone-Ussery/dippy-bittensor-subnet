@@ -1,10 +1,14 @@
 from loguru import logger
-import os,sys
+import os, sys
+
 
 class EventLogger:
-
-
-    def __init__(self, filepath="/tmp/valapi_event_logs/validator_api_{time}.log"):
+    def __init__(
+        self,
+        filepath="/tmp/valapi_event_logs/validator_api_{time}.log",
+        level="INFO",
+        stderr=False,
+    ):
         self.logger = logger
         # Determine the directory part from the filepath
         log_directory = os.path.dirname(filepath)
@@ -23,11 +27,19 @@ class EventLogger:
         # Configure loguru logger for JSON output and file rotation
         format = "{time} | {level} | {message}"
         self.logger.remove()  # Remove default configuration
+        if stderr:
+            self.logger.add(
+                sys.stderr,
+                format=format,
+                level=level,
+                serialize=True,  # For JSON output in console
+            )
         self.logger.add(
-            sys.stderr, format=format, serialize=True  # For JSON output in console
-        )
-        self.logger.add(
-            filepath, rotation="100 MB", format=format, serialize=True  # For JSON output in file with rotation
+            filepath,
+            rotation="100 MB",
+            level=level,
+            format=format,
+            serialize=True,  # For JSON output in file with rotation
         )
 
     def log(self, level, message, **kwargs):
@@ -44,7 +56,9 @@ class EventLogger:
     def debug(self, message, **kwargs):
         self.log("debug", message, **kwargs)
 
+
 # Example of using the JsonLogger
+
 
 def example():
     try:

@@ -5,9 +5,9 @@ from supabase import create_client
 from utilities.validation_utils import regenerate_hash
 
 
-llm = 'Manavshah/llama-test'
+llm = "Manavshah/llama-test"
 
-dotenv.load_dotenv('../.env')
+dotenv.load_dotenv("../.env")
 
 
 supabase_url = os.environ["SUPABASE_URL"]
@@ -22,24 +22,26 @@ except Exception as e:
 def test_evaluate_model():
     # Define the request payload
     request_payload = {
-        "admin_key": os.environ['ADMIN_KEY'],
-        "repo_namespace": llm.split('/')[0],
-        "repo_name": llm.split('/')[1],
+        "admin_key": os.environ["ADMIN_KEY"],
+        "repo_namespace": llm.split("/")[0],
+        "repo_name": llm.split("/")[1],
         "chat_template_type": "zephyr",
         "hash": None,
         "revision": "main",
-        "competition_id": "test"
+        "competition_id": "test",
     }
 
     # generate the hash based on regenerate_hash
-    request_payload["hash"] = str(regenerate_hash(
-        request_payload["repo_namespace"], 
-        request_payload["repo_name"], 
-        request_payload["chat_template_type"],
-        request_payload["competition_id"]
-    ))
+    request_payload["hash"] = str(
+        regenerate_hash(
+            request_payload["repo_namespace"],
+            request_payload["repo_name"],
+            request_payload["chat_template_type"],
+            request_payload["competition_id"],
+        )
+    )
 
-    print('Request payload:', request_payload)
+    print("Request payload:", request_payload)
 
     # Send a POST request to the evaluate_model endpoint
     response = requests.post("http://localhost:8000/evaluate_model", json=request_payload)
@@ -62,9 +64,9 @@ def test_evaluate_model():
             "qualitative_score": float,
             "latency_score": float,
             "vibe_score": float,
-            "total_score": float
+            "total_score": float,
         },
-        "status": str
+        "status": str,
     }
 
     for key, value_type in expected_response_structure.items():
