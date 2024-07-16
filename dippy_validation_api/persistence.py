@@ -22,7 +22,7 @@ class SupabaseState:
         try:
             response = (
                 self.client.table("leaderboard")
-                .upsert(
+                .update(
                     {"hash": hash, "status": status, "notes": notes},
                     returning="minimal",
                 )
@@ -33,12 +33,18 @@ class SupabaseState:
             self.logger.error(f"Error updating leaderboard status for {hash}: {e}")
             return None
 
-    def update_model_hash(self, hash: str, model_hash: str):
+    def update_minerboard_status(
+        self,
+        minerhash: str,
+        uid: int,
+        hotkey: str,
+        block: int,
+    ):
         try:
             response = (
-                self.client.table("leaderboard")
+                self.client.table("minerboard")
                 .upsert(
-                    {"hash": hash, "model_hash": model_hash},
+                    {"hash": minerhash, "uid": uid, "hotkey": hotkey, "block": block},
                     returning="minimal",
                 )
                 .execute()
@@ -46,6 +52,14 @@ class SupabaseState:
             return response
         except Exception as e:
             self.logger.error(f"Error updating leaderboard status for {hash}: {e}")
+            return None
+
+    def minerboard_fetch(self):
+        try:
+            response = self.client.table("minerboard").select("*, leaderboard(*)").execute()
+            return response.data
+        except Exception as e:
+            self.logger.error(f"Error updating minerboard : {e}")
             return None
 
     def get_json_result(self, hash):
@@ -60,10 +74,9 @@ class SupabaseState:
                         "vibe_score": response.data[0]["vibe_score"],
                         "total_score": response.data[0]["total_score"],
                         "coherence_score": response.data[0]["coherence_score"],
-
+                        "creativity_score": response.data[0]["creativity_score"],
                     },
                     "details": {
-                        "block": response.data[0]["block"],
                         "model_hash": response.data[0]["model_hash"],
                     },
                     "status": response.data[0]["status"],
@@ -98,7 +111,7 @@ class SupabaseState:
             .select("*")
             .eq("status", "COMPLETED")
             .order("total_score", desc=True)
-            .limit(200)
+            .limit(10)
             .execute()
         )
         return response.data
@@ -110,18 +123,12 @@ class SupabaseState:
                 .select("*")
                 .eq("status", "COMPLETED")
                 .order("total_score", desc=True)
-                .limit(100)
+                .limit(10)
                 .execute()
             )
             leaderboard = pd.DataFrame(response.data)
-            leaderboard = leaderboard.fillna(value=-1)
+            leaderboard = leaderboard.fillna(value=0)
             leaderboard = leaderboard.sort_values(by="total_score", ascending=False)
-            # # filter out entries older than two weeks
-            # two_weeks_ago = datetime.now() - timedelta(weeks=2)
-            # # Convert the 'timestamp' column to datetime format. If parsing errors occur, 'coerce' will replace problematic inputs with NaT (Not a Time)
-            # leaderboard['timestamp'] = pd.to_datetime(leaderboard['timestamp'], errors='coerce', utc=True)
-            # leaderboard = leaderboard[(leaderboard['timestamp'].dt.tz_convert(None) > two_weeks_ago) | (leaderboard.index < 1000)]
-            # leaderboard = leaderboard.sort_values(by='total_score', ascending=False)
             return leaderboard.to_dict(orient="records")
         except Exception as e:
             self.logger.error(f"Error fetching leaderboard from Supabase: {e}")

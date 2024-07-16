@@ -3,7 +3,7 @@
 ## Prerequisites
 - Docker
 - Existing validator prerequisites (python, `wandb`)
-- 
+- Access tokens for following services below
 
 ## Environment Setup
 ```shell
@@ -13,9 +13,11 @@ ADMIN_KEY=<your_admin_access_key>
 HF_ACCESS_TOKEN=<your_huggingface_access_token>
 HF_USER=<your_huggingface_username>
 DIPPY_KEY=<your_dippy_bot_access_key>
+OPENAI_API_KEY=<your_openai_api_key>
 ```
 
 ## Steps
 1. Navigate to `dippy_validation_api` from the root of the repository.
-2. Start the validation api via the script `./start_validation_service_solo.sh`
-3. Start the model queue via the script ``
+2. Start the validation api via the script `./start_validation_service.sh`
+3. Start the model queue via the command `python neurons/model_queue.py` (modify endpoint data as needed) from repository root
+4. Run validator with commands specified to point to local validation api instance

@@ -1,10 +1,13 @@
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
+import sys
+from model.data import ModelId
 
 
 class MinerEntry(BaseModel):
-    block: Optional[int] = Field(..., description="The block number")
-    hotkey: Optional[str] = Field(..., description="The hotkey of the miner")
-    score_data: Dict[str, Any] = Field(default_factory=dict, description="Score data for the miner")
+    block: int = Field(default=sys.maxsize, description="The block number")
+    hotkey: Optional[str] = Field(default_factory=None, description="The hotkey of the miner")
+    invalid: bool = Field(default=False, description="invalidity of determining score")
+    model_id: Optional[ModelId] = Field(default_factory=None, description="The hotkey of the miner")
     total_score: float = 0

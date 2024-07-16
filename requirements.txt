@@ -16,3 +16,6 @@ threadpoolctl
 wandb
 vllm==0.4.1
 loguru
+loguru
+scipy
+numpy

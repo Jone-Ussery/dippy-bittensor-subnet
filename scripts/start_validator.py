@@ -97,6 +97,15 @@ def upgrade_packages() -> None:
     Notice: this won't work if some package in `requirements.txt` is downgraded.
     Ignored as this is unlikely to happen.
     """
+    log.info("Upgrading requirements")
+    try:
+        subprocess.run(
+            split(f"{sys.executable} -m pip install -r requirements.txt"),
+            check=True,
+            cwd=constants.ROOT_DIR,
+        )
+    except subprocess.CalledProcessError as exc:
+        log.error("Failed to upgrade packages, proceeding anyway. %s", exc)
 
     log.info("Upgrading packages")
     try:

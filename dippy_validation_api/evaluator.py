@@ -10,8 +10,9 @@ from typing import Optional, Union
 from scoring.entrypoint import _dl_dataset
 from scoring.common import EvaluateModelRequest
 from utilities.event_logger import EventLogger
+from model.scores import Scores
 
-DEFAULT_IMAGE_ID = "grader:latest"
+DEFAULT_IMAGE_NAME = "grader:latest"
 DEFAULT_HOME_DIR = "/home/new_prod_user/dippy-bittensor-subnet"
 
 
@@ -19,6 +20,7 @@ class EvaluationScore(BaseModel):
     eval_score: float
     latency_score: float
     eval_model_size_score: float
+    creativity_score: float
 
 
 class RunError(BaseModel):
@@ -36,7 +38,7 @@ class CoherenceScore(BaseModel):
 class Evaluator:
     def __init__(
         self,
-        image_name: str = DEFAULT_IMAGE_ID,
+        image_name: str = DEFAULT_IMAGE_NAME,
         logger: EventLogger = EventLogger(),
         trace: bool = False,
     ):
@@ -87,15 +89,15 @@ class Evaluator:
         )
         filepath = f"/tmp/{job_type}_output.json"
         filename = f"{job_type}_output.json"
-        result = container.wait()
+
         while container.status == "created":
             time.sleep(10)
             container.reload()
         while container.status == "running":
             time.sleep(30)
             container.reload()
-
-        self.logger.debug("container_run_complete")
+        result = container.wait()
+        self.logger.debug(f"container_run_complete, {result}")
 
         try:
             bits, stat = container.get_archive(filepath)
@@ -138,6 +140,7 @@ class Evaluator:
                 eval_score=eval_result["eval_score"],
                 latency_score=eval_result["latency_score"],
                 eval_model_size_score=eval_result["model_size_score"],
+                creativity_score=eval_result["creativity_score"],
             )
             return score
         except Exception as e:
@@ -178,6 +181,17 @@ class Evaluator:
             return RunError(error=str(e))
 
 
+import math
+
+STEEPNESS = 5
+THRESHOLD = 0.2
+
+
+def calculate_c_score(initial_score, creativity_score, threshold=0.2, steepness=5):
+    final_score = initial_score / (1 + math.exp(-steepness * (creativity_score - threshold)))
+    return final_score
+
+
 # Command to manually run evaluation
 def entry():
     _dl_dataset()
@@ -215,6 +229,35 @@ def entry():
         if isinstance(coherence_result, RunError):
             raise Exception(coherence_result.error)
         print(f"coherence_result : {coherence_result}")
+
+        scores_data = Scores()
+        scores_data.qualitative_score = eval_result.eval_score
+        scores_data.latency_score = eval_result.latency_score
+        scores_data.creativity_score = eval_result.creativity_score
+        scores_data.model_size_score = eval_result.eval_model_size_score
+        scores_data.coherence_score = coherence_result.coherence_score
+        scores_data.vibe_score = vibe_result.vibe_score
+
+        final_eval_score = (
+            scores_data.adjusted_q_score(
+                scores_data.qualitative_score,
+                scores_data.creativity_score,
+            )
+            * 0.82
+        )
+        final_model_size_score = scores_data.model_size_score * 0.06
+        final_latency_score = scores_data.latency_score * 0.06
+        final_vibe_score = scores_data.vibe_score * 0.06
+
+        total_score = final_eval_score + final_model_size_score + final_latency_score + final_vibe_score
+        print(f"final_model_size_score {final_model_size_score}")
+        print(f"final_latency_score {final_latency_score}")
+        print(f"final_vibe_score {final_vibe_score}")
+        print(f"final_eval_score {final_eval_score}")
+        print(f"coherence score: {scores_data.coherence_score}")
+        print(f"score pre coherence: {total_score}")
+        print(f"classic score: {scores_data.classic_score()}")
+        print(f"new score: {scores_data.new_total_score()}")
     except Exception as e:
         print(e)
 
