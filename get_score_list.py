@@ -5,7 +5,6 @@ import asyncio
 from tqdm import tqdm
 import requests
 from datetime import datetime
-import constants
 from prettytable import PrettyTable
 
 subtensor = bt.subtensor()
@@ -62,10 +61,10 @@ for key1 in model_infos_filtered:
         score2 = model_infos_filtered[key2]['total_score']
         block2 = model_infos_filtered[key2]['block']
         if block1 > block2:
-            score1_adj = score1 * 0.97
+            score1_adj = score1 * 0.975
             score2_adj = score2
         else:
-            score2_adj = score2 * 0.97
+            score2_adj = score2 * 0.975
             score1_adj = score1
         if score1_adj > score2_adj:
             model_wins[key1][0] += 1
