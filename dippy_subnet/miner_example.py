@@ -22,13 +22,13 @@ login(
 
 
 # model_name = "TapiwaWorknesh/m1"
-model_name = "tensorwa/k702"
+model_name = "tensorwa/k703"
 # model_name = "Sao10K/L3-8B-Stheno-v3.2"
 save_path = "local_models"
 chat_template_type = "chatml"
 
 _dl_dataset()
-wandb.init(entity='lksoft', project='bt-s11')
+wandb.init(entity='keisoft108', project='sn11')
 
 # 1. Prepare dataset and collator
 # 1-1. import packages
@@ -48,6 +48,12 @@ from scoring.common import (
     EvaluateModelRequest,
     CREATIVITY_SCALE_FACTOR
 )
+
+from model.scores import (
+    CREATIVITY_STEEPNESS,
+    CREATIVITY_THRESHOLD
+)
+max_entropy = math.log(VOCAB_TRUNCATION)
 max_len = MAX_SEQ_LEN
 
 # 1-2. define dataset and set chat_template_params
@@ -139,6 +145,11 @@ training_args = TrainingArguments(
     logging_steps=1,
     logging_dir="./logs",
     learning_rate=1e-5,
+    lr_scheduler_type="cosine",
+    lr_scheduler_kwargs = {
+        "num_warmup_steps": 0,
+        "num_training_steps": 26200
+    },
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE*2,
     num_train_epochs=100,
@@ -149,7 +160,7 @@ training_args = TrainingArguments(
 
 # 3. Custom callback to save model for each epoch and update eval dataset 
 from scoring.eval_score import eval_score
-from scoring.vibe_score import calculate_vibe_match_score
+# from scoring.vibe_score import calculate_vibe_match_score
 
 # 4. Initialize Trainer
 max_entropy = math.log(VOCAB_TRUNCATION)
@@ -157,13 +168,20 @@ class CustomTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_eval_score = 0
+        self.best_creativity_score = 0
 
     def log(self, logs: dict) -> None:
         # Add custom logs
-        custom_logs = {"eval_score": self.best_eval_score}  # Example custom log
+        custom_logs = {"eval_score": self.best_eval_score, "creativity_score": self.best_creativity_score}  # Example custom log
         logs.update(custom_logs)
         # Call the original log method
         super().log(logs)
+
+    def adjusted_q_score(
+            initial_score: float, creativity_score: float, threshold=CREATIVITY_THRESHOLD, steepness=CREATIVITY_STEEPNESS
+        ):
+            adjusted_score = initial_score / (1 + math.exp(-steepness * (creativity_score - threshold)))
+            return adjusted_score
 
     def evaluate(self, eval_dataset=None, ignore_keys=None, metric_key_prefix: str = "eval"):
         # output = super().evaluate(eval_dataset=eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
@@ -175,21 +193,27 @@ class CustomTrainer(Trainer):
         # vibe_score = calculate_vibe_match_score(model, tokenizer, vibe_contexts, vibe_last_user_messages, vibe_target_texts)
         # print(f"Vibe score: {vibe_score}\n")
         
-        evaluation_score = eval_score(
+        eval_score_data = eval_score(
             model,
             sampled_data,
             input_tokenizer=input_tokenizer,
             output_tokenizer=output_tokenizer,
         )
+        evaluation_score = self.adjusted_q_score(eval_score_data.average_prob, eval_score_data.average_entropy)
+
         # print(f"Model evaluation score: {evaluation_score}\n")
         if self.best_eval_score < evaluation_score:
             self.best_eval_score = evaluation_score
+            self.best_creativity_score = eval_score_data.average_entropy
             save_model(model, tokenizer, save_path, "best_model")
         else:
             save_model(model, tokenizer, save_path, "latest_model")
         
         self.eval_dataset = dataset.random_map(1024, preprocess_function, BATCH_SIZE)
-        return {'eval_score': evaluation_score}
+        return {
+            'eval_score': evaluation_score,
+            'creativity_score': eval_score_data.average_entropy
+        }
 
     def compute_loss(self, model, inputs, return_outputs=False):
         # get the mask that only give us the output ids
@@ -258,7 +282,7 @@ class CustomTrainer(Trainer):
         four_gram_probabilities = three_gram_probabilities[:, 1:] * one_gram_probabilities[:, :-3]
         n_gram_prob += (four_gram_probabilities.sum().cpu().item() / token_count) * 0.25
         # custom_loss = (1 - n_gram_prob)*1.5 + loss * 0.5
-        custom_loss = (1 - scaled_entropy) * 0.7 + loss * 0.3
+        custom_loss = (1 - scaled_entropy) * 0.6 + loss * 0.2 + (1 - n_gram_prob)* 0.2
 
         # delete the tensors to free up memory
         del (
