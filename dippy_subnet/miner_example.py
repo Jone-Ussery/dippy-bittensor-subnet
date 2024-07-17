@@ -3,14 +3,14 @@ Example script to download any arbitrary model and format the repo correctly.
 """
 import os
 import gc
+import math
 from datetime import datetime
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, TrainerCallback, Trainer
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, TrainerCallback, Trainer, BitsAndBytesConfig
 from utilities.utils import save_model
 from huggingface_hub import login
 import wandb
 import torch
 import dotenv
-import math
 from scoring.common import EvaluateModelRequest
 from scoring.entrypoint import _dl_dataset
 
@@ -21,9 +21,11 @@ login(
 )
 
 
-model_name = "TapiwaWorknesh/ssd-2"
+# model_name = "TapiwaWorknesh/m1"
+model_name = "tensorwa/k702"
+# model_name = "Sao10K/L3-8B-Stheno-v3.2"
 save_path = "local_models"
-chat_template_type = "mistral"
+chat_template_type = "chatml"
 
 _dl_dataset()
 wandb.init(entity='lksoft', project='bt-s11')
@@ -43,15 +45,9 @@ from scoring.common import (
     VOCAB_TRUNCATION,
     MAX_SEQ_LEN,
     BATCH_SIZE,
-    CREATIVITY_SCALE_FACTOR,
     EvaluateModelRequest,
+    CREATIVITY_SCALE_FACTOR
 )
-from model.scores import (
-    CREATIVITY_STEEPNESS,
-    CREATIVITY_THRESHOLD
-)
-
-max_entropy = math.log(VOCAB_TRUNCATION)
 max_len = MAX_SEQ_LEN
 
 # 1-2. define dataset and set chat_template_params
@@ -62,6 +58,10 @@ dataset = PippaDataset(
 tokenizer = AutoTokenizer.from_pretrained(model_name, force_download=True)
 input_tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left", force_download=True)
 output_tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="right", force_download=True)
+if input_tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+    input_tokenizer.pad_token = input_tokenizer.eos_token
+    output_tokenizer.pad_token = output_tokenizer.eos_token
 dataset.set_chat_template_params(chat_template_mappings[chat_template_type], input_tokenizer)
 
 # 1-3. define data collator to set eos for vibe score training
@@ -135,10 +135,10 @@ eval_tokenized_dataset = dataset.random_map(1024, preprocess_function, BATCH_SIZ
 training_args = TrainingArguments(
     output_dir='./results',
     evaluation_strategy="epoch",
-    # eval_steps=2,
+    # eval_steps=1,
     logging_steps=1,
     logging_dir="./logs",
-    learning_rate=1e-7,
+    learning_rate=1e-5,
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE*2,
     num_train_epochs=100,
@@ -150,29 +150,21 @@ training_args = TrainingArguments(
 # 3. Custom callback to save model for each epoch and update eval dataset 
 from scoring.eval_score import eval_score
 from scoring.vibe_score import calculate_vibe_match_score
-from scoring.coherence_score import calculate_coherence_score
 
 # 4. Initialize Trainer
-
+max_entropy = math.log(VOCAB_TRUNCATION)
 class CustomTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.best_eval_score = 0
-        self.best_creativity_score = 0
 
     def log(self, logs: dict) -> None:
         # Add custom logs
-        custom_logs = {"eval_score": self.best_eval_score, "creativity_score": self.best_creativity_score}  # Example custom log
+        custom_logs = {"eval_score": self.best_eval_score}  # Example custom log
         logs.update(custom_logs)
         # Call the original log method
         super().log(logs)
 
-    def adjusted_q_score(
-            initial_score: float, creativity_score: float, threshold=CREATIVITY_THRESHOLD, steepness=CREATIVITY_STEEPNESS
-        ):
-            adjusted_score = initial_score / (1 + math.exp(-steepness * (creativity_score - threshold)))
-            return adjusted_score
-    
     def evaluate(self, eval_dataset=None, ignore_keys=None, metric_key_prefix: str = "eval"):
         # output = super().evaluate(eval_dataset=eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
         # print(f"Best/Current Eval Loss: {state.log_history[-1]['eval_loss']}/{self.best_loss}.\n")
@@ -183,26 +175,21 @@ class CustomTrainer(Trainer):
         # vibe_score = calculate_vibe_match_score(model, tokenizer, vibe_contexts, vibe_last_user_messages, vibe_target_texts)
         # print(f"Vibe score: {vibe_score}\n")
         
-        eval_score_data = eval_score(
+        evaluation_score = eval_score(
             model,
             sampled_data,
             input_tokenizer=input_tokenizer,
             output_tokenizer=output_tokenizer,
         )
-        evaluation_score = self.adjusted_q_score(eval_score_data.average_prob, eval_score_data.average_entropy)
         # print(f"Model evaluation score: {evaluation_score}\n")
         if self.best_eval_score < evaluation_score:
             self.best_eval_score = evaluation_score
-            self.best_creativity_score = eval_score_data.average_entropy
             save_model(model, tokenizer, save_path, "best_model")
         else:
             save_model(model, tokenizer, save_path, "latest_model")
         
         self.eval_dataset = dataset.random_map(1024, preprocess_function, BATCH_SIZE)
-        return {
-            'eval_score': evaluation_score,
-            'creativity_score': eval_score_data.average_entropy
-        }
+        return {'eval_score': evaluation_score}
 
     def compute_loss(self, model, inputs, return_outputs=False):
         # get the mask that only give us the output ids
@@ -270,7 +257,8 @@ class CustomTrainer(Trainer):
         # 4-gram
         four_gram_probabilities = three_gram_probabilities[:, 1:] * one_gram_probabilities[:, :-3]
         n_gram_prob += (four_gram_probabilities.sum().cpu().item() / token_count) * 0.25
-        custom_loss = (1 - n_gram_prob)*1.5 + loss * 0.5 + (1 - scaled_entropy)*1
+        # custom_loss = (1 - n_gram_prob)*1.5 + loss * 0.5
+        custom_loss = (1 - scaled_entropy) * 0.7 + loss * 0.3
 
         # delete the tensors to free up memory
         del (
@@ -287,7 +275,8 @@ class CustomTrainer(Trainer):
             mask,
             top_prob_indices,
             top_k_logits,
-            top_k_indices
+            top_k_indices,
+            batch_entropy
         )
         gc.collect()
         torch.cuda.empty_cache()
@@ -296,24 +285,49 @@ class CustomTrainer(Trainer):
 
 # 5. Load model
 print(f"Loading model {model_name}")
-quant_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_use_double_quant=True,  # This does not hurt performance much according to
-    bnb_4bit_compute_dtype=torch.bfloat16,
+# quant_config = BitsAndBytesConfig(
+#     load_in_4bit=True,
+#     bnb_4bit_use_double_quant=True,  # This does not hurt performance much according to
+#     bnb_4bit_compute_dtype=torch.bfloat16,
+# )
+
+from peft import LoraConfig, get_peft_model 
+Lora_config = LoraConfig(
+    r=16,
+    lora_alpha=32,
+    lora_dropout=0.05,
+    bias="none"
 )
+# Lora_config = LoraConfig(
+#     r=4,
+#     lora_alpha=16,
+#     lora_dropout=0,
+#     target_modules=['q_proj', 'v_proj'],
+#     bias="none",
+#     task_type='CAUSAL_LM'
+# )
 
 model = AutoModelForCausalLM.from_pretrained(
-    model_name,
-    quantization_config=quant_config,
+    "/workspace/dippy-bittensor-subnet/local_models/best_model",
+    local_files_only=True,
     attn_implementation="flash_attention_2",
     torch_dtype=torch.bfloat16,
     device_map="auto",
 )
+# model = AutoModelForCausalLM.from_pretrained(
+#     model_name,
+#     # quantization_config=quant_config,
+#     attn_implementation="flash_attention_2",
+#     torch_dtype=torch.bfloat16,
+#     device_map="auto",
+# )
+# lora_config = LoraConfig.from_pretrained(model_name)
+# peft_model = get_peft_model(model, Lora_config)
 trainer = CustomTrainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_dataset,
-    eval_dataset=eval_tokenized_dataset,
+    eval_dataset=eval_tokenized_dataset
     # data_collator=data_collator,
     # callbacks=[callback]
 )
