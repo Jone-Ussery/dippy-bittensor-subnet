@@ -33,7 +33,7 @@ def eval_score(
     sampled_data: list[tuple],
     input_tokenizer: AutoTokenizer,
     output_tokenizer: AutoTokenizer,
-    request: EvaluateModelRequest,
+    # request: EvaluateModelRequest,
     debug: bool = False,
 ):
     """
@@ -232,7 +232,7 @@ def eval_score(
     average_prob = total_prob / count
     average_entropy = total_entropy / count
     print(f"Average probability of target tokens: {average_prob}")
-    cleanup(model, True, request)
+    # cleanup(model, True, request)
 
     return {
         "average_prob": average_prob,
