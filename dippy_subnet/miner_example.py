@@ -22,7 +22,7 @@ login(
 
 
 # model_name = "TapiwaWorknesh/m1"
-model_name = "tensorwa/k703"
+model_name = "whizzzzkid/whizzzzkid_p44_7"
 # model_name = "Sao10K/L3-8B-Stheno-v3.2"
 save_path = "local_models"
 chat_template_type = "chatml"
@@ -140,27 +140,33 @@ eval_tokenized_dataset = dataset.random_map(1024, preprocess_function, BATCH_SIZ
 # 2. Prepare Training arguments
 training_args = TrainingArguments(
     output_dir='./results',
-    evaluation_strategy="epoch",
-    # eval_steps=1,
+    # evaluation_strategy="epoch",
+    evaluation_strategy="steps",
+    eval_steps=131,
     logging_steps=1,
     logging_dir="./logs",
-    learning_rate=1e-5,
+    learning_rate=1.6e-8,
     lr_scheduler_type="cosine",
-    lr_scheduler_kwargs = {
-        "num_warmup_steps": 0,
-        "num_training_steps": 26200
-    },
+    warmup_ratio = 0.2,
     per_device_train_batch_size=BATCH_SIZE,
     per_device_eval_batch_size=BATCH_SIZE*2,
     num_train_epochs=100,
     weight_decay=0.01,
     gradient_accumulation_steps=32,
+    gradient_checkpointing=True,
     report_to='wandb'
 )
 
 # 3. Custom callback to save model for each epoch and update eval dataset 
 from scoring.eval_score import eval_score
 # from scoring.vibe_score import calculate_vibe_match_score
+
+def adjusted_q_score(
+        initial_score: float, creativity_score: float, threshold=CREATIVITY_THRESHOLD, steepness=CREATIVITY_STEEPNESS
+    ):
+        adjusted_score = initial_score / (1 + math.exp(-steepness * (creativity_score - threshold)))
+        return adjusted_score
+
 
 # 4. Initialize Trainer
 max_entropy = math.log(VOCAB_TRUNCATION)
@@ -169,19 +175,26 @@ class CustomTrainer(Trainer):
         super().__init__(*args, **kwargs)
         self.best_eval_score = 0
         self.best_creativity_score = 0
+        self.best_qualitative_score = 0
+        self.eval_score = 0
+        self.creativity_score = 0
+        self.qualitative_score = 0
+        
 
     def log(self, logs: dict) -> None:
         # Add custom logs
-        custom_logs = {"eval_score": self.best_eval_score, "creativity_score": self.best_creativity_score}  # Example custom log
+        custom_logs = {
+            "best_eval_score": self.best_eval_score,
+            "best_creativity_score": self.best_creativity_score,
+            "best_qualitative_score": self.best_qualitative_score,
+            "eval_score": self.eval_score,
+            "creativity_score": self.creativity_score,
+            "qualitative_score": self.qualitative_score
+        }  # Example custom log
         logs.update(custom_logs)
         # Call the original log method
         super().log(logs)
 
-    def adjusted_q_score(
-            initial_score: float, creativity_score: float, threshold=CREATIVITY_THRESHOLD, steepness=CREATIVITY_STEEPNESS
-        ):
-            adjusted_score = initial_score / (1 + math.exp(-steepness * (creativity_score - threshold)))
-            return adjusted_score
 
     def evaluate(self, eval_dataset=None, ignore_keys=None, metric_key_prefix: str = "eval"):
         # output = super().evaluate(eval_dataset=eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
@@ -199,12 +212,16 @@ class CustomTrainer(Trainer):
             input_tokenizer=input_tokenizer,
             output_tokenizer=output_tokenizer,
         )
-        evaluation_score = self.adjusted_q_score(eval_score_data.average_prob, eval_score_data.average_entropy)
+        evaluation_score = adjusted_q_score(eval_score_data["average_prob"], eval_score_data["average_entropy"])
 
         # print(f"Model evaluation score: {evaluation_score}\n")
+        self.eval_score = evaluation_score
+        self.qualitative_score = eval_score_data["average_prob"]
+        self.creativity_score = eval_score_data["average_entropy"]
         if self.best_eval_score < evaluation_score:
             self.best_eval_score = evaluation_score
-            self.best_creativity_score = eval_score_data.average_entropy
+            self.best_qualitative_score = eval_score_data["average_prob"]
+            self.best_creativity_score = eval_score_data["average_entropy"]
             save_model(model, tokenizer, save_path, "best_model")
         else:
             save_model(model, tokenizer, save_path, "latest_model")
@@ -212,7 +229,8 @@ class CustomTrainer(Trainer):
         self.eval_dataset = dataset.random_map(1024, preprocess_function, BATCH_SIZE)
         return {
             'eval_score': evaluation_score,
-            'creativity_score': eval_score_data.average_entropy
+            'qualitative_score': eval_score_data["average_prob"],
+            'creativity_score': eval_score_data["average_entropy"]
         }
 
     def compute_loss(self, model, inputs, return_outputs=False):
@@ -252,7 +270,7 @@ class CustomTrainer(Trainer):
 
         batch_entropy = (entropy * targets_ids_mask).sum() / targets_ids_mask.sum()
         normalized = batch_entropy.item() / max_entropy
-        scaled_entropy = 1 - math.exp(-CREATIVITY_SCALE_FACTOR * normalized)
+        scaled_entropy = math.exp(-CREATIVITY_SCALE_FACTOR * normalized)
 
         if torch.isnan(probabilities).any():
             raise ValueError("NaN values detected in the probabilities tensor")
@@ -282,7 +300,7 @@ class CustomTrainer(Trainer):
         four_gram_probabilities = three_gram_probabilities[:, 1:] * one_gram_probabilities[:, :-3]
         n_gram_prob += (four_gram_probabilities.sum().cpu().item() / token_count) * 0.25
         # custom_loss = (1 - n_gram_prob)*1.5 + loss * 0.5
-        custom_loss = (1 - scaled_entropy) * 0.6 + loss * 0.2 + (1 - n_gram_prob)* 0.2
+        custom_loss = scaled_entropy * 0.8 + loss * 0.2 + (1 - n_gram_prob)* 0
 
         # delete the tensors to free up memory
         del (
@@ -331,20 +349,20 @@ Lora_config = LoraConfig(
 #     task_type='CAUSAL_LM'
 # )
 
-model = AutoModelForCausalLM.from_pretrained(
-    "/workspace/dippy-bittensor-subnet/local_models/best_model",
-    local_files_only=True,
-    attn_implementation="flash_attention_2",
-    torch_dtype=torch.bfloat16,
-    device_map="auto",
-)
 # model = AutoModelForCausalLM.from_pretrained(
-#     model_name,
-#     # quantization_config=quant_config,
+#     "/workspace/dippy-bittensor-subnet/local_models/best_model",
+#     local_files_only=True,
 #     attn_implementation="flash_attention_2",
 #     torch_dtype=torch.bfloat16,
 #     device_map="auto",
 # )
+model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    # quantization_config=quant_config,
+    attn_implementation="flash_attention_2",
+    torch_dtype=torch.bfloat16,
+    device_map="auto",
+)
 # lora_config = LoraConfig.from_pretrained(model_name)
 # peft_model = get_peft_model(model, Lora_config)
 trainer = CustomTrainer(
