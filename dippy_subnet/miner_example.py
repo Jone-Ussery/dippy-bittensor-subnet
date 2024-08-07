@@ -149,7 +149,7 @@ BATCH_SIZE = 2
 # eval_tokenized_dataset = list(map(preprocess_function, sample_dataset.sample_dataset(BATCH_SIZE) + dataset.sample_dataset(BATCH_SIZE)))
 
 tokenized_dataset = sample_dataset.map(preprocess_function, BATCH_SIZE) + dataset.map(preprocess_function, BATCH_SIZE)
-eval_tokenized_dataset = dataset.random_map(EVALUATION_DATASET_SAMPLE_SIZE / 2, preprocess_function, BATCH_SIZE) + dataset.random_map(EVALUATION_DATASET_SAMPLE_SIZE / 2, preprocess_function, BATCH_SIZE)
+eval_tokenized_dataset = sample_dataset.random_map(512, preprocess_function, BATCH_SIZE) + dataset.random_map(512, preprocess_function, BATCH_SIZE)
 
 
 # 2. Prepare Training arguments
