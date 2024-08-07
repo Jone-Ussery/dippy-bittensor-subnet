@@ -3,6 +3,7 @@ Example script to download any arbitrary model and format the repo correctly.
 """
 import os
 import gc
+import random
 import math
 from datetime import datetime
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, TrainerCallback, Trainer, BitsAndBytesConfig
@@ -92,7 +93,8 @@ data_collator = DataCollatorWithEOS(tokenizer=input_tokenizer, mlm=False)
 def preprocess_function(examples):
     global log_once
     inputs = input_tokenizer(
-        examples["contexts"],
+        examples[0],
+        # examples["contexts"],
         return_tensors="pt",
         padding="max_length",
         truncation=True,
@@ -100,7 +102,8 @@ def preprocess_function(examples):
         add_special_tokens=True,
     )  # this will put padding to the left and truncate the input if it is too long
     last_user_messages = input_tokenizer(
-        examples["last_user_messages"],
+        examples[2],
+        # examples["last_user_messages"],
         return_tensors="pt",
         padding="max_length",
         truncation=True,
@@ -108,7 +111,8 @@ def preprocess_function(examples):
         add_special_tokens=True,
     )
     targets = output_tokenizer(
-        examples["target_texts"],
+        examples[1],
+        # examples["target_texts"],
         return_tensors="pt",
         padding="max_length",
         truncation=True,
@@ -144,8 +148,8 @@ BATCH_SIZE = 2
 tokenized_dataset = list(map(preprocess_function, sample_dataset.sample_dataset(BATCH_SIZE*2) + dataset.sample_dataset(BATCH_SIZE*2)))
 eval_tokenized_dataset = list(map(preprocess_function, sample_dataset.sample_dataset(BATCH_SIZE) + dataset.sample_dataset(BATCH_SIZE)))
 
-tokenized_dataset = dataset.map(preprocess_function, BATCH_SIZE)
-eval_tokenized_dataset = dataset.random_map(1024, preprocess_function, BATCH_SIZE)
+#tokenized_dataset = dataset.map(preprocess_function, BATCH_SIZE)
+#eval_tokenized_dataset = dataset.random_map(1024, preprocess_function, BATCH_SIZE)
 
 
 # 2. Prepare Training arguments
@@ -164,7 +168,7 @@ training_args = TrainingArguments(
     num_train_epochs=100,
     weight_decay=0.01,
     gradient_accumulation_steps=32,
-    gradient_checkpointing=True,
+#    gradient_checkpointing=True,
     report_to='wandb'
 )
 
@@ -172,12 +176,11 @@ training_args = TrainingArguments(
 from scoring.eval_score import eval_score
 # from scoring.vibe_score import calculate_vibe_match_score
 
-def adjusted_q_score(
+    def adjusted_q_score(
         initial_score: float, creativity_score: float, threshold=CREATIVITY_THRESHOLD, steepness=CREATIVITY_STEEPNESS
     ):
         adjusted_score = initial_score / (1 + math.exp(-steepness * (creativity_score - threshold)))
         return adjusted_score
-
 
 # 4. Initialize Trainer
 max_entropy = math.log(VOCAB_TRUNCATION)
