@@ -22,7 +22,7 @@ login(
 
 
 # model_name = "TapiwaWorknesh/m1"
-model_name = "whizzzzkid/whizzzzkid_p44_7"
+model_name = "MelancholyMist/YourVoiceEchoes"
 # model_name = "Sao10K/L3-8B-Stheno-v3.2"
 save_path = "local_models"
 chat_template_type = "chatml"
@@ -34,7 +34,7 @@ wandb.init(entity='keisoft108', project='sn11')
 # 1-1. import packages
 from transformers import DataCollatorForLanguageModeling
 from scoring.common import chat_template_mappings
-from scoring.dataset import PippaDataset
+from scoring.dataset import PippaDataset, StreamedSyntheticDataset
 from model.storage.hugging_face.hugging_face_model_store import HuggingFaceModelStore
 from scoring.common import (
     MAX_AVG_LATENCY,
@@ -42,6 +42,7 @@ from scoring.common import (
     MAX_MODEL_SIZE,
     PROB_TOP_K,
     SAMPLE_SIZE,
+    EVALUATION_DATASET_SAMPLE_SIZE,
     VOCAB_TRUNCATION,
     MAX_SEQ_LEN,
     BATCH_SIZE,
@@ -61,6 +62,12 @@ dataset = PippaDataset(
     "datasets/pippa_deduped.jsonl",
     max_input_len=MAX_SEQ_LEN - MAX_GENERATION_LENGTH - 200,
 )
+
+sample_dataset = StreamedSyntheticDataset(
+    max_input_len=MAX_SEQ_LEN - MAX_GENERATION_LENGTH - 200,
+    # cut_index = 0
+)
+
 tokenizer = AutoTokenizer.from_pretrained(model_name, force_download=True)
 input_tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left", force_download=True)
 output_tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="right", force_download=True)
@@ -69,6 +76,7 @@ if input_tokenizer.pad_token is None:
     input_tokenizer.pad_token = input_tokenizer.eos_token
     output_tokenizer.pad_token = output_tokenizer.eos_token
 dataset.set_chat_template_params(chat_template_mappings[chat_template_type], input_tokenizer)
+sample_dataset.set_chat_template_params(chat_template_mappings[chat_template_type], input_tokenizer)
 
 # 1-3. define data collator to set eos for vibe score training
 class DataCollatorWithEOS(DataCollatorForLanguageModeling):
@@ -133,6 +141,9 @@ def preprocess_function(examples):
 
 # 1-5. Preprocess the dataset
 BATCH_SIZE = 2
+tokenized_dataset = list(map(preprocess_function, sample_dataset.sample_dataset(BATCH_SIZE*2) + dataset.sample_dataset(BATCH_SIZE*2)))
+eval_tokenized_dataset = list(map(preprocess_function, sample_dataset.sample_dataset(BATCH_SIZE) + dataset.sample_dataset(BATCH_SIZE)))
+
 tokenized_dataset = dataset.map(preprocess_function, BATCH_SIZE)
 eval_tokenized_dataset = dataset.random_map(1024, preprocess_function, BATCH_SIZE)
 
@@ -200,7 +211,8 @@ class CustomTrainer(Trainer):
         # output = super().evaluate(eval_dataset=eval_dataset, ignore_keys=ignore_keys, metric_key_prefix=metric_key_prefix)
         # print(f"Best/Current Eval Loss: {state.log_history[-1]['eval_loss']}/{self.best_loss}.\n")
 
-        sampled_data = dataset.sample_dataset(SAMPLE_SIZE) 
+        sampled_data = sample_dataset.sample_dataset(EVALUATION_DATASET_SAMPLE_SIZE) 
+        pippa_data = dataset.sample_dataset(EVALUATION_DATASET_SAMPLE_SIZE)
 
         # vibe_contexts, vibe_target_texts, vibe_last_user_messages = zip(*sampled_data)
         # vibe_score = calculate_vibe_match_score(model, tokenizer, vibe_contexts, vibe_last_user_messages, vibe_target_texts)
@@ -209,6 +221,7 @@ class CustomTrainer(Trainer):
         eval_score_data = eval_score(
             model,
             sampled_data,
+            pippa_data,
             input_tokenizer=input_tokenizer,
             output_tokenizer=output_tokenizer,
         )
@@ -226,7 +239,8 @@ class CustomTrainer(Trainer):
         else:
             save_model(model, tokenizer, save_path, "latest_model")
         
-        self.eval_dataset = dataset.random_map(1024, preprocess_function, BATCH_SIZE)
+        self.eval_dataset = list(map(preprocess_function, sample_dataset.sample_dataset(BATCH_SIZE) + dataset.sample_dataset(BATCH_SIZE)))
+
         return {
             'eval_score': evaluation_score,
             'qualitative_score': eval_score_data["average_prob"],
@@ -270,7 +284,7 @@ class CustomTrainer(Trainer):
 
         batch_entropy = (entropy * targets_ids_mask).sum() / targets_ids_mask.sum()
         normalized = batch_entropy.item() / max_entropy
-        scaled_entropy = math.exp(-CREATIVITY_SCALE_FACTOR * normalized)
+        scaled_entropy = 1 - math.exp(-CREATIVITY_SCALE_FACTOR * normalized)
 
         if torch.isnan(probabilities).any():
             raise ValueError("NaN values detected in the probabilities tensor")
@@ -278,6 +292,9 @@ class CustomTrainer(Trainer):
         # Get the top PROB_TOP_K indices and zero out all other probabilities
         top_prob_indices = torch.topk(probabilities, PROB_TOP_K, dim=-1).indices
         mask = torch.zeros_like(probabilities, dtype=torch.bool).scatter_(-1, top_prob_indices, True)
+        probabilities[~mask] = 0.031
+        entropy_panelty = torch.sum(probabilities<0.03 , dim=-1)
+        entropy_panelty_avg = (entropy_panelty * targets_ids_mask).sum() / targets_ids_mask.sum()
         probabilities[~mask] = 1e-9
         # Get the probabilities assigned by the model to the target tokens
         token_probabilities = probabilities.gather(-1, input_ids.unsqueeze(-1)).squeeze(-1)
@@ -300,7 +317,7 @@ class CustomTrainer(Trainer):
         four_gram_probabilities = three_gram_probabilities[:, 1:] * one_gram_probabilities[:, :-3]
         n_gram_prob += (four_gram_probabilities.sum().cpu().item() / token_count) * 0.25
         # custom_loss = (1 - n_gram_prob)*1.5 + loss * 0.5
-        custom_loss = scaled_entropy * 0.8 + loss * 0.2 + (1 - n_gram_prob)* 0
+        custom_loss = entropy_panelty_avg/10  + loss
 
         # delete the tensors to free up memory
         del (
@@ -318,7 +335,8 @@ class CustomTrainer(Trainer):
             top_prob_indices,
             top_k_logits,
             top_k_indices,
-            batch_entropy
+            batch_entropy,
+            entropy_panelty
         )
         gc.collect()
         torch.cuda.empty_cache()
