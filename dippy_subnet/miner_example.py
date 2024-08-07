@@ -93,8 +93,8 @@ data_collator = DataCollatorWithEOS(tokenizer=input_tokenizer, mlm=False)
 def preprocess_function(examples):
     global log_once
     inputs = input_tokenizer(
-        examples[0],
-        # examples["contexts"],
+        # examples[0],
+        examples["contexts"],
         return_tensors="pt",
         padding="max_length",
         truncation=True,
@@ -102,8 +102,8 @@ def preprocess_function(examples):
         add_special_tokens=True,
     )  # this will put padding to the left and truncate the input if it is too long
     last_user_messages = input_tokenizer(
-        examples[2],
-        # examples["last_user_messages"],
+        # examples[2],
+        examples["last_user_messages"],
         return_tensors="pt",
         padding="max_length",
         truncation=True,
@@ -111,8 +111,8 @@ def preprocess_function(examples):
         add_special_tokens=True,
     )
     targets = output_tokenizer(
-        examples[1],
-        # examples["target_texts"],
+        # examples[1],
+        examples["target_texts"],
         return_tensors="pt",
         padding="max_length",
         truncation=True,
@@ -145,11 +145,11 @@ def preprocess_function(examples):
 
 # 1-5. Preprocess the dataset
 BATCH_SIZE = 2
-tokenized_dataset = list(map(preprocess_function, sample_dataset.sample_dataset(BATCH_SIZE*2) + dataset.sample_dataset(BATCH_SIZE*2)))
-eval_tokenized_dataset = list(map(preprocess_function, sample_dataset.sample_dataset(BATCH_SIZE) + dataset.sample_dataset(BATCH_SIZE)))
+# tokenized_dataset = list(map(preprocess_function, sample_dataset.sample_dataset(BATCH_SIZE*2) + dataset.sample_dataset(BATCH_SIZE*2)))
+# eval_tokenized_dataset = list(map(preprocess_function, sample_dataset.sample_dataset(BATCH_SIZE) + dataset.sample_dataset(BATCH_SIZE)))
 
-#tokenized_dataset = dataset.map(preprocess_function, BATCH_SIZE)
-#eval_tokenized_dataset = dataset.random_map(1024, preprocess_function, BATCH_SIZE)
+tokenized_dataset = sample_dataset.map(preprocess_function, BATCH_SIZE) + dataset.map(preprocess_function, BATCH_SIZE)
+eval_tokenized_dataset = dataset.random_map(EVALUATION_DATASET_SAMPLE_SIZE / 2, preprocess_function, BATCH_SIZE) + dataset.random_map(EVALUATION_DATASET_SAMPLE_SIZE / 2, preprocess_function, BATCH_SIZE)
 
 
 # 2. Prepare Training arguments
@@ -242,7 +242,7 @@ class CustomTrainer(Trainer):
         else:
             save_model(model, tokenizer, save_path, "latest_model")
         
-        self.eval_dataset = list(map(preprocess_function, sample_dataset.sample_dataset(BATCH_SIZE) + dataset.sample_dataset(BATCH_SIZE)))
+        # self.eval_dataset = list(map(preprocess_function, sample_dataset.sample_dataset(BATCH_SIZE) + dataset.sample_dataset(BATCH_SIZE)))
 
         return {
             'eval_score': evaluation_score,
