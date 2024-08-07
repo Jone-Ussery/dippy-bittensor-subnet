@@ -176,11 +176,11 @@ training_args = TrainingArguments(
 from scoring.eval_score import eval_score
 # from scoring.vibe_score import calculate_vibe_match_score
 
-    def adjusted_q_score(
-        initial_score: float, creativity_score: float, threshold=CREATIVITY_THRESHOLD, steepness=CREATIVITY_STEEPNESS
-    ):
-        adjusted_score = initial_score / (1 + math.exp(-steepness * (creativity_score - threshold)))
-        return adjusted_score
+def adjusted_q_score(
+    initial_score: float, creativity_score: float, threshold=CREATIVITY_THRESHOLD, steepness=CREATIVITY_STEEPNESS
+):
+    adjusted_score = initial_score / (1 + math.exp(-steepness * (creativity_score - threshold)))
+    return adjusted_score
 
 # 4. Initialize Trainer
 max_entropy = math.log(VOCAB_TRUNCATION)
