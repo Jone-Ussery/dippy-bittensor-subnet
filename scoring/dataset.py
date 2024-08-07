@@ -441,6 +441,38 @@ class StreamedSyntheticDataset(Dataset):
         indices = indices[:n]
 
         return [self[i] for i in indices]
+    
+    def random_map(self, n, preprocess_fn, batch_size=1):
+        # get indices of the dataset
+        indices = list(range(len(self.dataset)))
+        random.shuffle(indices)
+        indices = indices[:n]
+        arr = [self[i] for i in indices]
+
+        processed_data = []    
+        # Process the dataset in batches
+        # for i in range(0, n, batch_size):
+        for i in range(0, n):
+            # batches = arr[i:i + batch_size]  # Get a batch of examples
+            contexts, target_texts, last_user_messages = arr[i] # zip(*batches)
+            processed_batch = preprocess_fn({"contexts": contexts, "target_texts": target_texts, "last_user_messages": last_user_messages})  # Apply preprocessing function to batch
+            processed_data.append(processed_batch)  # Append processed batch to results
+    
+        return processed_data
+    
+    # Custom mapping function
+    def map(self, preprocess_fn, batch_size=1):
+        processed_data = []
+    
+        # Process the dataset in batches
+        # for i in range(0, len(self.dataset), batch_size):
+        for i in range(0, len(self.dataset)):
+            # batches = [self[j%len(self.dataset)] for j in range(i, i+batch_size)]  # Get a batch of examples
+            contexts, target_texts, last_user_messages = self[i]
+            processed_batch = preprocess_fn({"contexts": contexts, "target_texts": target_texts, "last_user_messages": last_user_messages})  # Apply preprocessing function to batch
+            processed_data.append(processed_batch)  # Append processed batch to results
+    
+        return processed_data
 
 
 class PromptDataset(Dataset):
