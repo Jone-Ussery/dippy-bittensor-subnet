@@ -159,18 +159,6 @@ async def main(config: bt.config):
     )
 
     if not config.skip_model_upload:
-
-        # model_to_save = AutoModelForCausalLM.from_pretrained(
-        #     pretrained_model_name_or_path=config.model_dir,
-        #     local_files_only=True,
-        #     attn_implementation="flash_attention_2",
-        #     torch_dtype=torch.bfloat16,
-        #     device_map='auto'
-        # )
-        # tokenizer = AutoTokenizer.from_pretrained("starnet/03s1")
-        # save_model(model_to_save, tokenizer, "local-models", "s11-m-0101")
-        # new_model_dir = "local-models/s11-m-0101"
-        # model = Model(id=model_id, local_repo_dir=new_model_dir)
         model = Model(id=model_id, local_repo_dir=config.model_dir)
 
         check_model_dir(config.model_dir)
@@ -209,11 +197,11 @@ async def main(config: bt.config):
     # We can only commit to the chain every n minutes, so run this in a loop, until successful.
     while True:
         try:
-            # update_repo_visibility(
-            #     model_id.namespace + "/" + model_id.name,
-            #     private=False,
-            #     token=os.getenv("HF_ACCESS_TOKEN"),
-            # )
+            update_repo_visibility(
+                model_id.namespace + "/" + model_id.name,
+                private=False,
+                token=os.getenv("HF_ACCESS_TOKEN"),
+            )
             await model_metadata_store.store_model_metadata(wallet.hotkey.ss58_address, model_id_with_hash)
             bt.logging.success("Committed model to the chain.")
             break

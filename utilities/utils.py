@@ -106,6 +106,6 @@ def save_model(model, tokenizer, path: str, model_name: str):
     os.makedirs(path, exist_ok=True)
 
     model_path = os.path.join(path, model_name)
-    model.save_pretrained(model_path, max_shard_size='2GB')
+    model.save_pretrained(model_path)
     tokenizer.save_pretrained(model_path)
     bt.logging.success(f"Model and tokenizer saved to {path}")
